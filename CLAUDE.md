@@ -13,17 +13,17 @@ This file provides guidance to Claude Code when working with the L1 Cluster Plat
 
 | Service | Purpose | Namespace | Status |
 |---------|---------|-----------|--------|
-| **MetalLB** | LoadBalancer for bare-metal | metallb-system | ✅ Ready |
-| **nginx-ingress** | HTTP/HTTPS ingress controller | ingress-nginx | ✅ Ready |
-| **metrics-server** | Metrics API for HPA/VPA | kube-system | ✅ Ready |
-| **external-dns** | Automatic DNS record management | external-dns | ✅ Ready |
-| **Linkerd** | Service mesh, mTLS | linkerd | ✅ Ready |
-| **Linkerd-viz** | Mesh dashboard/observability | linkerd-viz | ✅ Ready |
-| **Karpenter** | Node autoscaling | kube-system | ✅ Ready |
-| **cert-manager** | TLS certificate automation | cert-manager | ⏳ Config Ready |
-| **NFS Provisioner** | Dynamic PersistentVolume provisioning | nfs-provisioner | ⏳ Config Ready |
-| **MinIO** | S3-compatible object storage | minio | ⏳ Config Ready |
-| **Test Service** | Deployment validation | test-service | ✅ Ready |
+| **MetalLB** | LoadBalancer for bare-metal | metallb-system | ✅ Deployed |
+| **nginx-ingress** | HTTP/HTTPS ingress controller | ingress-nginx | ✅ Deployed |
+| **metrics-server** | Metrics API for HPA/VPA | kube-system | ✅ Deployed |
+| **external-dns** | Automatic DNS record management | external-dns | ✅ Deployed |
+| **Linkerd** | Service mesh, mTLS | linkerd | ✅ Deployed |
+| **Linkerd-viz** | Mesh dashboard/observability | linkerd-viz | ✅ Deployed |
+| **Karpenter** | Node autoscaling | kube-system | ✅ Deployed |
+| **cert-manager** | TLS certificate automation | cert-manager | ✅ Deployed |
+| **NFS Provisioner** | Dynamic PersistentVolume provisioning | nfs-provisioner | ✅ Deployed |
+| **MinIO** | S3-compatible object storage | minio | ✅ Deployed |
+| **Test Service** | Deployment validation | test-service | ✅ Deployed |
 
 > **Note**: L1 components are managed via Helm/Makefile (NOT ArgoCD)
 > Linkerd is managed via `linkerd` CLI, not Helm
@@ -137,9 +137,13 @@ addresses:
 ## Deployment Order
 
 1. **MetalLB** - Required for LoadBalancer services
-2. **external-dns** - Requires MetalLB for its own service
-3. **Test Service** - Validates MetalLB + DNS
-4. **Karpenter** - Optional, requires additional setup
+2. **nginx-ingress** - HTTP/HTTPS ingress controller
+3. **external-dns** - Requires MetalLB for its own service
+4. **cert-manager** - TLS certificate automation with internal CA
+5. **NFS Provisioner** - Dynamic PVC provisioning (reads config from cell-config.yaml)
+6. **MinIO** - S3-compatible storage for Harbor, Velero, Loki, Tempo
+7. **Karpenter** - Optional, requires additional setup
+8. **Test Service** - Validates full stack
 
 ## Karpenter Prerequisites
 
@@ -221,5 +225,6 @@ kubectl logs -n kube-system -l app.kubernetes.io/name=karpenter-proxmox
 ---
 
 **Layer**: L1 Cluster Platform
-**Status**: Ready for deployment
+**Status**: ✅ Fully Deployed
+**Last Updated**: 2026-01-03
 **Prerequisites**: L0 operational

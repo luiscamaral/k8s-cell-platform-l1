@@ -10,6 +10,7 @@
 .PHONY: karpenter-status karpenter-logs karpenter-test karpenter-uninstall
 .PHONY: linkerd-status linkerd-check
 .PHONY: deploy-storage deploy-cert-manager deploy-minio storage-status cert-manager-status minio-status
+.PHONY: show-config
 
 # Default target
 .DEFAULT_GOAL := help
@@ -20,6 +21,19 @@
 
 KUBECTL := kubectl
 HELM := helm
+YQ := yq
+
+# Cell Configuration (read from parent repo)
+CELL_CONFIG := ../meta/cell-config.yaml
+
+# Dynamic values from cell-config.yaml (with defaults)
+NFS_SERVER := $(shell $(YQ) '.storage.nfs.server // "192.168.2.50"' $(CELL_CONFIG) 2>/dev/null || echo "192.168.2.50")
+NFS_PATH := $(shell $(YQ) '.storage.nfs.path // "/volume2/shared/k8s-storage"' $(CELL_CONFIG) 2>/dev/null || echo "/volume2/shared/k8s-storage")
+STORAGE_CLASS := $(shell $(YQ) '.storage.class // "nfs-client"' $(CELL_CONFIG) 2>/dev/null || echo "nfs-client")
+DOMAIN_BASE := $(shell $(YQ) '.domain.base // "lab.home"' $(CELL_CONFIG) 2>/dev/null || echo "lab.home")
+TLS_ISSUER := $(shell $(YQ) '.ingress.tls.issuer // "internal-ca"' $(CELL_CONFIG) 2>/dev/null || echo "internal-ca")
+MINIO_API_HOST := $(shell $(YQ) '.services.minio.api_host // "minio.lab.home"' $(CELL_CONFIG) 2>/dev/null || echo "minio.lab.home")
+MINIO_CONSOLE_HOST := $(shell $(YQ) '.services.minio.console_host // "minio-console.lab.home"' $(CELL_CONFIG) 2>/dev/null || echo "minio-console.lab.home")
 
 # Component Versions
 METALLB_VERSION := 0.15.3
@@ -86,7 +100,31 @@ help: ## Show this help message
 	@echo "  make karpenter-uninstall  - Remove Karpenter"
 	@echo ""
 	@echo "$(COLOR_BOLD)Utilities:$(COLOR_RESET)"
+	@echo "  make show-config          - Show cell configuration values"
 	@echo "  make clean                - Remove test resources"
+
+# ============================================================================
+# Cell Configuration
+# ============================================================================
+
+show-config: ## Show cell configuration values
+	@echo "$(COLOR_BOLD)📋 Cell Configuration$(COLOR_RESET)"
+	@echo "$(COLOR_CYAN)=====================$(COLOR_RESET)"
+	@echo ""
+	@echo "$(COLOR_BOLD)Source:$(COLOR_RESET) $(CELL_CONFIG)"
+	@echo ""
+	@echo "$(COLOR_BOLD)Storage:$(COLOR_RESET)"
+	@echo "  NFS Server:    $(NFS_SERVER)"
+	@echo "  NFS Path:      $(NFS_PATH)"
+	@echo "  StorageClass:  $(STORAGE_CLASS)"
+	@echo ""
+	@echo "$(COLOR_BOLD)Domain & TLS:$(COLOR_RESET)"
+	@echo "  Base Domain:   $(DOMAIN_BASE)"
+	@echo "  TLS Issuer:    $(TLS_ISSUER)"
+	@echo ""
+	@echo "$(COLOR_BOLD)MinIO:$(COLOR_RESET)"
+	@echo "  API Host:      $(MINIO_API_HOST)"
+	@echo "  Console Host:  $(MINIO_CONSOLE_HOST)"
 
 # ============================================================================
 # Full Deployment
@@ -298,6 +336,9 @@ cert-manager-status: ## Show cert-manager status
 
 deploy-storage: ## Deploy NFS provisioner
 	@echo "$(COLOR_BOLD)📦 Deploying NFS Provisioner $(NFS_PROVISIONER_VERSION)...$(COLOR_RESET)"
+	@echo "$(COLOR_CYAN)  NFS Server: $(NFS_SERVER)$(COLOR_RESET)"
+	@echo "$(COLOR_CYAN)  NFS Path:   $(NFS_PATH)$(COLOR_RESET)"
+	@echo "$(COLOR_CYAN)  StorageClass: $(STORAGE_CLASS)$(COLOR_RESET)"
 	@$(HELM) repo add nfs-subdir-external-provisioner $(NFS_PROVISIONER_REPO) 2>/dev/null || true
 	@$(HELM) repo update nfs-subdir-external-provisioner
 	@$(KUBECTL) apply -k storage/
@@ -305,6 +346,9 @@ deploy-storage: ## Deploy NFS provisioner
 		--namespace nfs-provisioner \
 		--version $(NFS_PROVISIONER_VERSION) \
 		-f storage/helm/nfs-provisioner-values.yaml \
+		--set nfs.server=$(NFS_SERVER) \
+		--set nfs.path=$(NFS_PATH) \
+		--set storageClass.name=$(STORAGE_CLASS) \
 		--wait --timeout 5m
 	@echo "$(COLOR_GREEN)✅ NFS Provisioner $(NFS_PROVISIONER_VERSION) deployed$(COLOR_RESET)"
 	@echo ""
@@ -326,6 +370,9 @@ storage-status: ## Show storage status
 
 deploy-minio: ## Deploy MinIO S3 storage
 	@echo "$(COLOR_BOLD)📦 Deploying MinIO $(MINIO_VERSION)...$(COLOR_RESET)"
+	@echo "$(COLOR_CYAN)  API Host:     $(MINIO_API_HOST)$(COLOR_RESET)"
+	@echo "$(COLOR_CYAN)  Console Host: $(MINIO_CONSOLE_HOST)$(COLOR_RESET)"
+	@echo "$(COLOR_CYAN)  TLS Issuer:   $(TLS_ISSUER)$(COLOR_RESET)"
 	@echo "$(COLOR_YELLOW)⚠️  Requires: cert-manager and storage (NFS) deployed first$(COLOR_RESET)"
 	@$(HELM) repo add minio $(MINIO_REPO) 2>/dev/null || true
 	@$(HELM) repo update minio
@@ -334,12 +381,20 @@ deploy-minio: ## Deploy MinIO S3 storage
 		--namespace minio \
 		--version $(MINIO_VERSION) \
 		-f minio/helm/minio-values.yaml \
+		--set ingress.hosts[0]=$(MINIO_API_HOST) \
+		--set ingress.tls[0].hosts[0]=$(MINIO_API_HOST) \
+		--set ingress.annotations."cert-manager\.io/cluster-issuer"=$(TLS_ISSUER) \
+		--set consoleIngress.hosts[0]=$(MINIO_CONSOLE_HOST) \
+		--set consoleIngress.tls[0].hosts[0]=$(MINIO_CONSOLE_HOST) \
+		--set consoleIngress.annotations."cert-manager\.io/cluster-issuer"=$(TLS_ISSUER) \
+		--set persistence.storageClass=$(STORAGE_CLASS) \
+		--set environment.MINIO_BROWSER_REDIRECT_URL=https://$(MINIO_CONSOLE_HOST) \
 		--wait --timeout 10m
 	@echo "$(COLOR_GREEN)✅ MinIO $(MINIO_VERSION) deployed$(COLOR_RESET)"
 	@echo ""
 	@echo "$(COLOR_BOLD)Access:$(COLOR_RESET)"
-	@echo "  API: https://minio.lab.home"
-	@echo "  Console: https://minio-console.lab.home"
+	@echo "  API: https://$(MINIO_API_HOST)"
+	@echo "  Console: https://$(MINIO_CONSOLE_HOST)"
 
 minio-status: ## Show MinIO status
 	@echo "$(COLOR_BOLD)📊 MinIO Status$(COLOR_RESET)"
