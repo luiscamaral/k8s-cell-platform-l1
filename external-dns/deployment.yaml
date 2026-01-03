@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: external-dns
+  namespace: external-dns
+  labels:
+    app: external-dns
+    app.kubernetes.io/name: external-dns
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: external-dns
+  template:
+    metadata:
+      labels:
+        app: external-dns
+        app.kubernetes.io/name: external-dns
+    spec:
+      serviceAccountName: external-dns
+      containers:
+        - name: external-dns
+          image: registry.k8s.io/external-dns/external-dns:v0.19.0
+          args:
+            - --source=service
+            - --source=ingress
+            - --domain-filter=lab.home
+            - --provider=pihole
+            - --pihole-server=http://192.168.100.254
+            - --pihole-api-version=6
+            - --registry=noop
+            - --policy=upsert-only
+            - --log-level=info
+          env:
+            - name: EXTERNAL_DNS_PIHOLE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pihole-password
+                  key: EXTERNAL_DNS_PIHOLE_PASSWORD
+          resources:
+            requests:
+              memory: "50Mi"
+              cpu: "50m"
+            limits:
+              memory: "100Mi"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL

@@ -1,0 +1,26 @@
+# MetalLB Helm Values for L1 Cluster Platform
+# Version: 0.15.3
+# Layer: L1 - Infrastructure
+
+controller:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+speaker:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# FRR (FRRouting) mode - required for speaker in v0.14+
+speaker:
+  frr:
+    enabled: true

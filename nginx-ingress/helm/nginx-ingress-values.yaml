@@ -1,0 +1,36 @@
+# NGINX Ingress Controller Helm Values for L1 Cluster Platform
+# Version: 4.14.1
+# Layer: L1 - Infrastructure
+
+controller:
+  replicaCount: 2
+
+  service:
+    type: LoadBalancer
+    annotations:
+      external-dns.alpha.kubernetes.io/hostname: ingress.lab.home
+
+  ingressClassResource:
+    name: nginx
+    enabled: true
+    default: true
+    controllerValue: "k8s.io/ingress-nginx"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 90Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  admissionWebhooks:
+    enabled: true
+
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false  # Enable when Prometheus is deployed
+
+  # Pod disruption budget for HA
+  minAvailable: 1

@@ -1,0 +1,21 @@
+# Karpenter for Proxmox - Kustomization
+# Manages all Karpenter resources for L1 Platform
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Resources are applied in order
+resources:
+  # Secrets (applied first)
+  - secret-proxmox-credentials.yaml
+  - secret-talos-template.yaml
+  - secret-talos-values.yaml
+  # Karpenter CRDs (must exist before controller)
+  - proxmox-unmanaged-template.yaml
+  - proxmox-nodeclass.yaml
+  - nodepool-burst.yaml
+
+# Common labels for all resources
+commonLabels:
+  app.kubernetes.io/part-of: kubernetes-cell-platform
+  app.kubernetes.io/managed-by: kustomize
+  platform-layer: l1

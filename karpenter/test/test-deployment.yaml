@@ -1,0 +1,74 @@
+# Test Deployment for Karpenter Scaling
+# Requests resources that require Karpenter to provision new nodes
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: karpenter-test
+  labels:
+    app.kubernetes.io/name: karpenter-test
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: karpenter-scale-test
+  namespace: karpenter-test
+  labels:
+    app: karpenter-scale-test
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: karpenter-scale-test
+  template:
+    metadata:
+      labels:
+        app: karpenter-scale-test
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.9
+          resources:
+            requests:
+              cpu: "2"
+              memory: "4Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+      # Target Karpenter-managed nodes only
+      nodeSelector:
+        node-type: karpenter
+      # Tolerate unregistered taint during node startup
+      tolerations:
+        - key: "karpenter.sh/unregistered"
+          operator: "Exists"
+          effect: "NoExecute"
+---
+# Cleanup job - removes test resources after validation
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cleanup-instructions
+  namespace: karpenter-test
+data:
+  instructions: |
+    To clean up test resources:
+      kubectl delete namespace karpenter-test
+
+    To watch node provisioning:
+      kubectl get nodeclaims -w
+      kubectl get nodes -w
+
+    To check Karpenter logs:
+      kubectl logs -n kube-system -l app.kubernetes.io/name=karpenter-proxmox -f

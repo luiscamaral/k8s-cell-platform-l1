@@ -1,0 +1,15 @@
+# ProxmoxUnmanagedTemplate - References VM template in Proxmox
+# IMPORTANT: Create the template on Proxmox first:
+#   Option A: qm template <existing-worker-vmid>
+#   Option B: Create new template VM (see CLAUDE.md)
+apiVersion: karpenter.proxmox.sinextra.dev/v1alpha1
+kind: ProxmoxUnmanagedTemplate
+metadata:
+  name: talos-worker
+  labels:
+    app.kubernetes.io/name: karpenter
+    app.kubernetes.io/component: template
+spec:
+  # Name of the VM template in Proxmox
+  # Must match exactly the template name shown in Proxmox UI
+  templateName: "talos-worker-template"

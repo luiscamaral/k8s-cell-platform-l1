@@ -1,0 +1,52 @@
+# NodePool - Defines burst capacity for dynamic scaling
+# Static workers (Terraform) provide baseline, this pool provides burst
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: burst
+  labels:
+    app.kubernetes.io/name: karpenter
+    app.kubernetes.io/component: nodepool
+spec:
+  # Resource limits for this pool
+  limits:
+    cpu: "64"       # Max 64 vCPUs total
+    memory: 256Gi   # Max 256GB memory total
+
+  # Disruption settings for cost optimization
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 60s  # Scale down after 1 minute idle
+    budgets:
+      - nodes: "10%"  # Max 10% of nodes disrupted at once
+
+  # Node template configuration
+  template:
+    metadata:
+      labels:
+        node-type: karpenter
+        capacity: burst
+        environment: lab
+    spec:
+      # Reference to ProxmoxNodeClass
+      nodeClassRef:
+        group: karpenter.proxmox.sinextra.dev
+        kind: ProxmoxNodeClass
+        name: default
+
+      # Minimal requirements - let Karpenter choose instance types
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+
+      # Node expiration (optional - recreate nodes after 30 days)
+      expireAfter: 720h
+
+      # Taints during startup (removed when node registers)
+      startupTaints:
+        - key: karpenter.sh/unregistered
+          effect: NoExecute

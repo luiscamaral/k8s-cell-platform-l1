@@ -1,0 +1,45 @@
+# Karpenter Proxmox Provider Helm Values
+# Chart: oci://ghcr.io/sergelogvinov/charts/karpenter-provider-proxmox
+# Chart Version: 0.4.1 (appVersion: v0.7.1)
+
+replicaCount: 1
+
+# Run on control plane nodes for stability
+nodeSelector:
+  node-role.kubernetes.io/control-plane: ""
+
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    effect: NoSchedule
+
+# Resource limits
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Reference to Proxmox credentials secret (correct parameter name)
+existingConfigSecret: karpenter-provider-proxmox
+existingConfigSecretKey: config.yaml
+
+# Logging configuration
+logVerbosityLevel: debug
+
+# Settings
+settings:
+  batchMaxDuration: 10s
+  batchIdleDuration: 1s
+  featureGates:
+    nodeRepair: false
+
+# Service account - use default generated name for RBAC consistency
+serviceAccount:
+  create: true
+  # name: karpenter-proxmox-karpenter-provider-proxmox  # auto-generated
+
+# RBAC
+rbac:
+  create: true

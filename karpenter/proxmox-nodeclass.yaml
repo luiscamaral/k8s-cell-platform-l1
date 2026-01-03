@@ -1,0 +1,45 @@
+# ProxmoxNodeClass - Defines how Karpenter provisions VMs
+apiVersion: karpenter.proxmox.sinextra.dev/v1alpha1
+kind: ProxmoxNodeClass
+metadata:
+  name: default
+  labels:
+    app.kubernetes.io/name: karpenter
+    app.kubernetes.io/component: nodeclass
+spec:
+  # Region defined in the Proxmox credentials secret
+  region: proxmox-home
+
+  # Reference to the VM template
+  instanceTemplateRef:
+    kind: ProxmoxUnmanagedTemplate
+    name: talos-worker
+
+  # Metadata options for Talos config injection
+  metadataOptions:
+    # Talos reads machine config from virtual CDROM
+    type: cdrom
+    # Reference to the Talos machine config template
+    templatesRef:
+      name: karpenter-talos-template
+      namespace: kube-system
+    # Reference to the Talos values (secrets)
+    valuesRef:
+      name: karpenter-talos-values
+      namespace: kube-system
+
+  # Boot disk configuration
+  bootDevice:
+    size: 100Gi
+    storage: local-lvm
+
+  # Placement strategy across Proxmox zones
+  placementStrategy:
+    zoneBalance: Balanced
+
+  # Tags applied to VMs in Proxmox
+  tags:
+    - karpenter
+    - k8s-lab
+    - worker
+    - burst
