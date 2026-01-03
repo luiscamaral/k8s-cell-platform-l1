@@ -1,0 +1,35 @@
+# Let's Encrypt Production Issuer
+# Use this for real public certificates
+# Rate limits apply: https://letsencrypt.org/docs/rate-limits/
+
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    # Production server
+    server: https://acme-v02.api.letsencrypt.org/directory
+
+    # Email for certificate notifications
+    # UPDATE THIS with your email
+    email: admin@example.com
+
+    # Secret to store the ACME account key
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+
+    # HTTP-01 challenge solver
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
+
+    # Alternative: DNS-01 challenge (for wildcard certs)
+    # Requires DNS provider configuration
+    # solvers:
+    #   - dns01:
+    #       cloudflare:
+    #         apiTokenSecretRef:
+    #           name: cloudflare-api-token
+    #           key: api-token

@@ -1,0 +1,48 @@
+# Internal CA Issuer
+# This creates a self-signed issuer to bootstrap the CA, then a CA issuer
+# The CA certificate should be distributed to clients for trust
+
+---
+# Step 1: Self-signed issuer (only used to create the CA certificate)
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-bootstrap
+spec:
+  selfSigned: {}
+
+---
+# Step 2: CA Certificate (root certificate for the internal CA)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: homelab-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: "Homelab Root CA"
+  subject:
+    organizations:
+      - Homelab
+    countries:
+      - US
+  secretName: homelab-ca-key-pair
+  duration: 87600h    # 10 years
+  renewBefore: 8760h  # Renew 1 year before expiry
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned-bootstrap
+    kind: ClusterIssuer
+    group: cert-manager.io
+
+---
+# Step 3: CA Issuer (uses the CA certificate to issue other certificates)
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: internal-ca
+spec:
+  ca:
+    secretName: homelab-ca-key-pair

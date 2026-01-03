@@ -1,0 +1,11 @@
+# MinIO Kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: minio
+
+resources:
+  - namespace.yaml
+
+# Helm chart is deployed separately via Makefile
+# See helm/minio-values.yaml for configuration

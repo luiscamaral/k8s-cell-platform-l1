@@ -20,6 +20,9 @@ This file provides guidance to Claude Code when working with the L1 Cluster Plat
 | **Linkerd** | Service mesh, mTLS | linkerd | ✅ Ready |
 | **Linkerd-viz** | Mesh dashboard/observability | linkerd-viz | ✅ Ready |
 | **Karpenter** | Node autoscaling | kube-system | ✅ Ready |
+| **cert-manager** | TLS certificate automation | cert-manager | ⏳ Config Ready |
+| **NFS Provisioner** | Dynamic PersistentVolume provisioning | nfs-provisioner | ⏳ Config Ready |
+| **MinIO** | S3-compatible object storage | minio | ⏳ Config Ready |
 | **Test Service** | Deployment validation | test-service | ✅ Ready |
 
 > **Note**: L1 components are managed via Helm/Makefile (NOT ArgoCD)
@@ -48,6 +51,23 @@ l1_cluster_platform/
 │   ├── nodepool-*.yaml  # NodePools
 │   ├── helm/            # Helm values
 │   └── test/            # Test workloads
+│
+├── cert-manager/        # TLS certificate management
+│   ├── kustomization.yaml
+│   ├── namespace.yaml
+│   ├── ca/              # Internal CA bootstrap
+│   ├── issuers/         # ClusterIssuers
+│   └── helm/            # Helm values
+│
+├── storage/             # PersistentVolume provisioning
+│   ├── kustomization.yaml
+│   ├── namespace.yaml
+│   └── helm/            # NFS provisioner values
+│
+├── minio/               # S3-compatible storage
+│   ├── kustomization.yaml
+│   ├── namespace.yaml
+│   └── helm/            # MinIO values
 │
 ├── test-service/        # Validation
 │   └── whoami.yaml
@@ -189,6 +209,9 @@ kubectl logs -n kube-system -l app.kubernetes.io/name=karpenter-proxmox
 | Linkerd | edge-25.12.3 | linkerd CLI |
 | Linkerd-viz | edge-25.12.3 | linkerd CLI |
 | Karpenter | 0.4.1 | karpenter-provider-proxmox (Helm) |
+| cert-manager | 1.16.2 | jetstack/cert-manager (Helm) |
+| NFS Provisioner | 4.0.18 | nfs-subdir-external-provisioner (Helm) |
+| MinIO | 5.3.0 | minio/minio (Helm) |
 
 ## Related Layers
 

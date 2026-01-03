@@ -9,6 +9,7 @@
 .PHONY: karpenter-secrets karpenter-install karpenter-resources
 .PHONY: karpenter-status karpenter-logs karpenter-test karpenter-uninstall
 .PHONY: linkerd-status linkerd-check
+.PHONY: deploy-storage deploy-cert-manager deploy-minio storage-status cert-manager-status minio-status
 
 # Default target
 .DEFAULT_GOAL := help
@@ -26,12 +27,18 @@ NGINX_VERSION := 4.14.1
 METRICS_SERVER_VERSION := 3.13.0
 LINKERD_VERSION := edge-25.12.3
 KARPENTER_VERSION := 0.4.1
+CERT_MANAGER_VERSION := 1.16.2
+NFS_PROVISIONER_VERSION := 4.0.18
+MINIO_VERSION := 5.3.0
 
 # Helm Repositories
 METALLB_REPO := https://metallb.github.io/metallb
 NGINX_REPO := https://kubernetes.github.io/ingress-nginx
 METRICS_SERVER_REPO := https://kubernetes-sigs.github.io/metrics-server/
 KARPENTER_CHART := oci://ghcr.io/sergelogvinov/charts/karpenter-provider-proxmox
+JETSTACK_REPO := https://charts.jetstack.io
+NFS_PROVISIONER_REPO := https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/
+MINIO_REPO := https://charts.min.io/
 
 # Colors for output
 COLOR_RESET := \033[0m
@@ -62,6 +69,11 @@ help: ## Show this help message
 	@echo "  make deploy-external-dns   - Deploy external-dns (Kustomize)"
 	@echo "  make deploy-karpenter      - Deploy Karpenter autoscaler (Helm)"
 	@echo "  make deploy-test-service   - Deploy test whoami service"
+	@echo ""
+	@echo "$(COLOR_BOLD)Storage & TLS:$(COLOR_RESET)"
+	@echo "  make deploy-cert-manager   - Deploy cert-manager + internal CA (Helm)"
+	@echo "  make deploy-storage        - Deploy NFS provisioner (Helm)"
+	@echo "  make deploy-minio          - Deploy MinIO S3 storage (Helm)"
 	@echo ""
 	@echo "$(COLOR_BOLD)Service Mesh (Linkerd - CLI managed):$(COLOR_RESET)"
 	@echo "  make linkerd-status        - Show Linkerd status"
@@ -245,6 +257,103 @@ linkerd-check: ## Run Linkerd health check
 	@linkerd check 2>/dev/null || echo "$(COLOR_YELLOW)linkerd CLI not installed or check failed$(COLOR_RESET)"
 
 # ============================================================================
+# Storage, TLS, and S3
+# ============================================================================
+
+deploy-cert-manager: ## Deploy cert-manager + internal CA
+	@echo "$(COLOR_BOLD)📦 Deploying cert-manager $(CERT_MANAGER_VERSION)...$(COLOR_RESET)"
+	@$(HELM) repo add jetstack $(JETSTACK_REPO) 2>/dev/null || true
+	@$(HELM) repo update jetstack
+	@$(KUBECTL) apply -k cert-manager/
+	@$(HELM) upgrade -i cert-manager jetstack/cert-manager \
+		--namespace cert-manager \
+		--version v$(CERT_MANAGER_VERSION) \
+		-f cert-manager/helm/cert-manager-values.yaml \
+		--wait --timeout 5m
+	@echo "$(COLOR_YELLOW)⏳ Creating internal CA...$(COLOR_RESET)"
+	@sleep 5
+	@$(KUBECTL) apply -f cert-manager/ca/ca-issuer.yaml
+	@echo "$(COLOR_YELLOW)⏳ Waiting for CA certificate...$(COLOR_RESET)"
+	@sleep 10
+	@$(KUBECTL) apply -f cert-manager/issuers/internal-ca-issuer.yaml
+	@echo "$(COLOR_GREEN)✅ cert-manager $(CERT_MANAGER_VERSION) deployed with internal CA$(COLOR_RESET)"
+	@echo ""
+	@echo "$(COLOR_YELLOW)To trust the CA on your machine:$(COLOR_RESET)"
+	@echo "  $(COLOR_CYAN)kubectl get secret homelab-ca-key-pair -n cert-manager -o jsonpath='{.data.tls\\.crt}' | base64 -d > homelab-ca.crt$(COLOR_RESET)"
+	@echo "  $(COLOR_CYAN)sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain homelab-ca.crt$(COLOR_RESET)"
+
+cert-manager-status: ## Show cert-manager status
+	@echo "$(COLOR_BOLD)📊 cert-manager Status$(COLOR_RESET)"
+	@echo "$(COLOR_CYAN)======================$(COLOR_RESET)"
+	@echo ""
+	@echo "$(COLOR_BOLD)Controller:$(COLOR_RESET)"
+	@$(KUBECTL) get pods -n cert-manager 2>/dev/null || echo "  Not deployed"
+	@echo ""
+	@echo "$(COLOR_BOLD)ClusterIssuers:$(COLOR_RESET)"
+	@$(KUBECTL) get clusterissuers 2>/dev/null || echo "  None found"
+	@echo ""
+	@echo "$(COLOR_BOLD)Certificates:$(COLOR_RESET)"
+	@$(KUBECTL) get certificates -A 2>/dev/null || echo "  None found"
+
+deploy-storage: ## Deploy NFS provisioner
+	@echo "$(COLOR_BOLD)📦 Deploying NFS Provisioner $(NFS_PROVISIONER_VERSION)...$(COLOR_RESET)"
+	@$(HELM) repo add nfs-subdir-external-provisioner $(NFS_PROVISIONER_REPO) 2>/dev/null || true
+	@$(HELM) repo update nfs-subdir-external-provisioner
+	@$(KUBECTL) apply -k storage/
+	@$(HELM) upgrade -i nfs-provisioner nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
+		--namespace nfs-provisioner \
+		--version $(NFS_PROVISIONER_VERSION) \
+		-f storage/helm/nfs-provisioner-values.yaml \
+		--wait --timeout 5m
+	@echo "$(COLOR_GREEN)✅ NFS Provisioner $(NFS_PROVISIONER_VERSION) deployed$(COLOR_RESET)"
+	@echo ""
+	@echo "$(COLOR_BOLD)StorageClass:$(COLOR_RESET)"
+	@$(KUBECTL) get storageclass
+
+storage-status: ## Show storage status
+	@echo "$(COLOR_BOLD)📊 Storage Status$(COLOR_RESET)"
+	@echo "$(COLOR_CYAN)=================$(COLOR_RESET)"
+	@echo ""
+	@echo "$(COLOR_BOLD)NFS Provisioner:$(COLOR_RESET)"
+	@$(KUBECTL) get pods -n nfs-provisioner 2>/dev/null || echo "  Not deployed"
+	@echo ""
+	@echo "$(COLOR_BOLD)StorageClasses:$(COLOR_RESET)"
+	@$(KUBECTL) get storageclass 2>/dev/null || echo "  None found"
+	@echo ""
+	@echo "$(COLOR_BOLD)PersistentVolumeClaims:$(COLOR_RESET)"
+	@$(KUBECTL) get pvc -A 2>/dev/null || echo "  None found"
+
+deploy-minio: ## Deploy MinIO S3 storage
+	@echo "$(COLOR_BOLD)📦 Deploying MinIO $(MINIO_VERSION)...$(COLOR_RESET)"
+	@echo "$(COLOR_YELLOW)⚠️  Requires: cert-manager and storage (NFS) deployed first$(COLOR_RESET)"
+	@$(HELM) repo add minio $(MINIO_REPO) 2>/dev/null || true
+	@$(HELM) repo update minio
+	@$(KUBECTL) apply -k minio/
+	@$(HELM) upgrade -i minio minio/minio \
+		--namespace minio \
+		--version $(MINIO_VERSION) \
+		-f minio/helm/minio-values.yaml \
+		--wait --timeout 10m
+	@echo "$(COLOR_GREEN)✅ MinIO $(MINIO_VERSION) deployed$(COLOR_RESET)"
+	@echo ""
+	@echo "$(COLOR_BOLD)Access:$(COLOR_RESET)"
+	@echo "  API: https://minio.lab.home"
+	@echo "  Console: https://minio-console.lab.home"
+
+minio-status: ## Show MinIO status
+	@echo "$(COLOR_BOLD)📊 MinIO Status$(COLOR_RESET)"
+	@echo "$(COLOR_CYAN)===============$(COLOR_RESET)"
+	@echo ""
+	@echo "$(COLOR_BOLD)Pods:$(COLOR_RESET)"
+	@$(KUBECTL) get pods -n minio 2>/dev/null || echo "  Not deployed"
+	@echo ""
+	@echo "$(COLOR_BOLD)Services:$(COLOR_RESET)"
+	@$(KUBECTL) get svc -n minio 2>/dev/null || echo "  None found"
+	@echo ""
+	@echo "$(COLOR_BOLD)Ingresses:$(COLOR_RESET)"
+	@$(KUBECTL) get ingress -n minio 2>/dev/null || echo "  None found"
+
+# ============================================================================
 # Status and Verification
 # ============================================================================
 
@@ -276,8 +385,21 @@ status: ## Show status of all L1 services
 	@echo "$(COLOR_BOLD)Karpenter:$(COLOR_RESET)"
 	@$(KUBECTL) get pods -n kube-system -l app.kubernetes.io/name=karpenter-proxmox 2>/dev/null || echo "  Not deployed"
 	@echo ""
+	@echo "$(COLOR_BOLD)cert-manager:$(COLOR_RESET)"
+	@$(KUBECTL) get pods -n cert-manager 2>/dev/null || echo "  Not deployed"
+	@$(KUBECTL) get clusterissuers 2>/dev/null || echo "  (No issuers)"
+	@echo ""
+	@echo "$(COLOR_BOLD)NFS Provisioner:$(COLOR_RESET)"
+	@$(KUBECTL) get pods -n nfs-provisioner 2>/dev/null || echo "  Not deployed"
+	@echo ""
+	@echo "$(COLOR_BOLD)MinIO:$(COLOR_RESET)"
+	@$(KUBECTL) get pods -n minio 2>/dev/null || echo "  Not deployed"
+	@echo ""
 	@echo "$(COLOR_BOLD)Test Service:$(COLOR_RESET)"
 	@$(KUBECTL) get svc -n test-service 2>/dev/null || echo "  Not deployed"
+	@echo ""
+	@echo "$(COLOR_BOLD)StorageClasses:$(COLOR_RESET)"
+	@$(KUBECTL) get storageclass 2>/dev/null || echo "  None found"
 	@echo ""
 	@echo "$(COLOR_BOLD)LoadBalancer IPs:$(COLOR_RESET)"
 	@$(KUBECTL) get svc -A -o wide | grep LoadBalancer || echo "  None assigned"

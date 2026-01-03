@@ -1,0 +1,63 @@
+# NFS Subdir External Provisioner Helm Values
+# Chart: nfs-subdir-external-provisioner/nfs-subdir-external-provisioner
+# Docs: https://github.com/kubernetes-sigs/nfs-subdir-external-provisioner
+
+# NFS Server Configuration
+# Update these values from meta/cell-config.yaml
+nfs:
+  server: "192.168.100.254"           # NFS server IP
+  path: "/volume1/k8s-storage"        # NFS export path
+  mountOptions:
+    - nfsvers=4.1
+    - hard
+    - noatime
+
+# StorageClass Configuration
+storageClass:
+  # Name of the StorageClass
+  name: nfs-client
+
+  # Set as default StorageClass
+  defaultClass: true
+
+  # Allow volume expansion
+  allowVolumeExpansion: true
+
+  # Reclaim policy (Delete or Retain)
+  reclaimPolicy: Delete
+
+  # Archive PV data on delete (moves to "archived-" prefix)
+  archiveOnDelete: true
+
+  # Access modes
+  accessModes: ReadWriteMany
+
+  # Volume binding mode
+  volumeBindingMode: Immediate
+
+# Provisioner settings
+replicaCount: 1
+
+# Pod security
+podSecurityPolicy:
+  enabled: false
+
+# Resource limits
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+# Node selector (optional - run on control plane or specific nodes)
+# nodeSelector: {}
+
+# Tolerations for control plane nodes if needed
+tolerations: []
+
+# Service account
+serviceAccount:
+  create: true
+  name: nfs-provisioner

@@ -1,0 +1,24 @@
+# Internal CA ClusterIssuer
+# This issuer uses the CA certificate created in ca/ca-issuer.yaml
+# Use this issuer for all internal services (Harbor, MinIO, ArgoCD, etc.)
+
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: internal-ca
+  annotations:
+    description: "Internal CA for homelab services"
+spec:
+  ca:
+    secretName: homelab-ca-key-pair
+
+# Note: The CA certificate and key are stored in:
+#   kubectl get secret homelab-ca-key-pair -n cert-manager
+#
+# To export the CA certificate for client trust:
+#   kubectl get secret homelab-ca-key-pair -n cert-manager \
+#     -o jsonpath='{.data.tls\.crt}' | base64 -d > homelab-ca.crt
+#
+# Install on macOS:
+#   sudo security add-trusted-cert -d -r trustRoot \
+#     -k /Library/Keychains/System.keychain homelab-ca.crt
