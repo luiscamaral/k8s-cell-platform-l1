@@ -5,11 +5,12 @@ namespace: cert-manager
 
 resources:
   - namespace.yaml
-  - ca/ca-issuer.yaml
-  - issuers/internal-ca-issuer.yaml
+  # ca/ca-issuer.yaml contains the full bootstrap chain:
+  # selfsigned-bootstrap → homelab-ca Certificate → internal-ca ClusterIssuer
+  # Applied separately via Makefile after Helm install
   # Uncomment for Let's Encrypt support:
   # - issuers/letsencrypt-staging.yaml
   # - issuers/letsencrypt-prod.yaml
 
 # Helm chart is installed via Makefile, not kustomize
-# These resources are post-install configuration
+# CA resources are applied post-install in correct order

@@ -270,12 +270,13 @@ deploy-cert-manager: ## Deploy cert-manager + internal CA
 		--version v$(CERT_MANAGER_VERSION) \
 		-f cert-manager/helm/cert-manager-values.yaml \
 		--wait --timeout 5m
-	@echo "$(COLOR_YELLOW)⏳ Creating internal CA...$(COLOR_RESET)"
+	@echo "$(COLOR_YELLOW)⏳ Creating internal CA bootstrap chain...$(COLOR_RESET)"
 	@sleep 5
 	@$(KUBECTL) apply -f cert-manager/ca/ca-issuer.yaml
-	@echo "$(COLOR_YELLOW)⏳ Waiting for CA certificate...$(COLOR_RESET)"
-	@sleep 10
-	@$(KUBECTL) apply -f cert-manager/issuers/internal-ca-issuer.yaml
+	@echo "$(COLOR_YELLOW)⏳ Waiting for CA certificate to be ready...$(COLOR_RESET)"
+	@sleep 15
+	@$(KUBECTL) get certificate homelab-ca -n cert-manager || true
+	@$(KUBECTL) get clusterissuers || true
 	@echo "$(COLOR_GREEN)✅ cert-manager $(CERT_MANAGER_VERSION) deployed with internal CA$(COLOR_RESET)"
 	@echo ""
 	@echo "$(COLOR_YELLOW)To trust the CA on your machine:$(COLOR_RESET)"
