@@ -50,16 +50,52 @@ qm set 9000 --scsi0 local-lvm:vm-9000-disk-0
 qm template 9000
 ```
 
-### 3. Update Secrets
+### 3. Configure Secrets in Vault
 
-Edit the following files with your actual values:
+Karpenter secrets are managed via External Secrets Operator (ESO) pulling from HashiCorp Vault.
 
-1. **secret-proxmox-credentials.yaml**
-   - Update `token_secret` with your Karpenter API token
+#### Store Proxmox Credentials in Vault
 
-2. **secret-talos-values.yaml**
-   - Extract values from Terraform: `terraform output -json`
-   - Update: `machineToken`, `machineCA`, `clusterID`, `clusterSecret`
+```bash
+vault kv put secret/kubernetes/karpenter/proxmox-credentials \
+  token_id="kubernetes@pve!karpenter" \
+  token_secret="<your-proxmox-api-token>" \
+  api_url="https://proxmox.home.lcamaral.com:8006/api2/json"
+```
+
+#### Store Talos Values in Vault
+
+Extract values from Terraform state:
+
+```bash
+# Get values from Terraform output
+cd l0_infrastructure/terraform/providers/proxmox
+terraform output -json
+
+# Store in Vault
+vault kv put secret/kubernetes/karpenter/talos-values \
+  machineToken="<from terraform output>" \
+  machineCA="<machine CA cert PEM>" \
+  clusterID="<cluster ID>" \
+  clusterSecret="<cluster secret>" \
+  bootstrapToken="<bootstrap token>" \
+  clusterEndpoint="https://192.168.100.51:6443" \
+  clusterName="k8s-lab" \
+  talosVersion="1.12.0" \
+  kubeletVersion="v1.34.0"
+```
+
+#### Alternative: Manual Secrets (Development Only)
+
+For development without Vault, copy the example files:
+
+```bash
+cp secret-proxmox-credentials.yaml.example secret-proxmox-credentials.yaml
+cp secret-talos-values.yaml.example secret-talos-values.yaml
+# Edit with your values
+kubectl apply -f secret-proxmox-credentials.yaml
+kubectl apply -f secret-talos-values.yaml
+```
 
 ## Quick Start
 
@@ -81,18 +117,20 @@ make karpenter-logs
 
 ```
 karpenter/
-├── kustomization.yaml              # Kustomize configuration
-├── secret-proxmox-credentials.yaml # Proxmox API credentials
-├── secret-talos-template.yaml      # Talos machine config template
-├── secret-talos-values.yaml        # Talos secrets (machine token, CA)
-├── proxmox-unmanaged-template.yaml # VM template reference
-├── proxmox-nodeclass.yaml          # Node class configuration
-├── nodepool-burst.yaml             # NodePool for burst capacity
+├── kustomization.yaml                      # Kustomize configuration
+├── externalsecret-proxmox-credentials.yaml # ESO: Proxmox API credentials from Vault
+├── externalsecret-talos-values.yaml        # ESO: Talos secrets from Vault
+├── secret-talos-template.yaml              # Talos machine config Go template
+├── secret-proxmox-credentials.yaml.example # Example for manual setup
+├── secret-talos-values.yaml.example        # Example for manual setup
+├── proxmox-unmanaged-template.yaml         # VM template reference
+├── proxmox-nodeclass.yaml                  # Node class configuration
+├── nodepool-burst.yaml                     # NodePool for burst capacity
 ├── helm/
-│   └── karpenter-proxmox-values.yaml # Helm values
+│   └── karpenter-proxmox-values.yaml       # Helm values
 ├── test/
-│   └── test-deployment.yaml        # Test workload
-└── README.md                       # This file
+│   └── test-deployment.yaml                # Test workload
+└── README.md                               # This file
 ```
 
 ## Configuration

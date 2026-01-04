@@ -1,0 +1,52 @@
+# External Secrets Operator - Helm Values
+# Chart: external-secrets/external-secrets
+# Docs: https://external-secrets.io/
+
+installCRDs: true
+
+replicaCount: 1
+
+# Webhook configuration
+webhook:
+  replicaCount: 1
+
+# Cert controller
+certController:
+  replicaCount: 1
+
+# Service account
+serviceAccount:
+  create: true
+  name: "external-secrets"
+
+# Resources
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi
+
+# Metrics
+metrics:
+  service:
+    enabled: true
+    port: 8080
+
+# Security context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault

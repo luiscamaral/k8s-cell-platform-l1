@@ -23,6 +23,7 @@ This file provides guidance to Claude Code when working with the L1 Cluster Plat
 | **cert-manager** | TLS certificate automation | cert-manager | ✅ Deployed |
 | **NFS Provisioner** | Dynamic PersistentVolume provisioning | nfs-provisioner | ✅ Deployed |
 | **MinIO** | S3-compatible object storage | minio | ✅ Deployed |
+| **External Secrets** | Vault secret synchronization | external-secrets | ⏳ Ready |
 | **Test Service** | Deployment validation | test-service | ✅ Deployed |
 
 > **Note**: L1 components are managed via Helm/Makefile (NOT ArgoCD)
@@ -68,6 +69,12 @@ l1_cluster_platform/
 │   ├── kustomization.yaml
 │   ├── namespace.yaml
 │   └── helm/            # MinIO values
+│
+├── external-secrets/    # Vault secret sync
+│   ├── kustomization.yaml
+│   ├── namespace.yaml
+│   ├── cluster-secret-store.yaml  # Vault backend config
+│   └── helm/            # ESO values
 │
 ├── test-service/        # Validation
 │   └── whoami.yaml
@@ -215,7 +222,8 @@ kubectl logs -n kube-system -l app.kubernetes.io/name=karpenter-proxmox
 | Karpenter | 0.4.1 | karpenter-provider-proxmox (Helm) |
 | cert-manager | 1.16.2 | jetstack/cert-manager (Helm) |
 | NFS Provisioner | 4.0.18 | nfs-subdir-external-provisioner (Helm) |
-| MinIO | 5.3.0 | minio/minio (Helm) |
+| MinIO | 5.4.0 | minio/minio (Helm) |
+| External Secrets | 0.12.1 | external-secrets/external-secrets (Helm) |
 
 ## Related Layers
 

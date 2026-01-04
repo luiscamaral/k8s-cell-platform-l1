@@ -1,0 +1,17 @@
+# L1 Cluster Platform - Git Ignore
+# Secrets and sensitive files should never be committed
+
+# Vault token for External Secrets Operator
+external-secrets/vault-token-secret.yaml
+
+# Any file with 'secret' in name that's not an example
+**/secret*.yaml
+!**/secret*.yaml.example
+
+# Terraform state (if any)
+*.tfstate
+*.tfstate.*
+
+# Local overrides
+*.local.yaml
+*.override.yaml

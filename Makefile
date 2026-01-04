@@ -10,6 +10,7 @@
 .PHONY: karpenter-status karpenter-logs karpenter-test karpenter-uninstall
 .PHONY: linkerd-status linkerd-check
 .PHONY: deploy-storage deploy-cert-manager deploy-minio storage-status cert-manager-status minio-status
+.PHONY: deploy-external-secrets external-secrets-status
 .PHONY: show-config
 
 # Default target
@@ -35,6 +36,11 @@ TLS_ISSUER := $(shell $(YQ) '.ingress.tls.issuer // "internal-ca"' $(CELL_CONFIG
 MINIO_API_HOST := $(shell $(YQ) '.services.minio.api_host // "minio.lab.home"' $(CELL_CONFIG) 2>/dev/null || echo "minio.lab.home")
 MINIO_CONSOLE_HOST := $(shell $(YQ) '.services.minio.console_host // "minio-console.lab.home"' $(CELL_CONFIG) 2>/dev/null || echo "minio-console.lab.home")
 
+# Network configuration from cell-config.yaml
+METALLB_POOL_START := $(shell $(YQ) '.network.metallb_pool.start // "192.168.100.200"' $(CELL_CONFIG) 2>/dev/null || echo "192.168.100.200")
+METALLB_POOL_END := $(shell $(YQ) '.network.metallb_pool.end // "192.168.100.250"' $(CELL_CONFIG) 2>/dev/null || echo "192.168.100.250")
+DNS_SERVER := $(shell $(YQ) '.network.dns_server // "192.168.100.254"' $(CELL_CONFIG) 2>/dev/null || echo "192.168.100.254")
+
 # Component Versions
 METALLB_VERSION := 0.15.3
 NGINX_VERSION := 4.14.1
@@ -44,6 +50,7 @@ KARPENTER_VERSION := 0.4.1
 CERT_MANAGER_VERSION := 1.16.2
 NFS_PROVISIONER_VERSION := 4.0.18
 MINIO_VERSION := 5.4.0
+EXTERNAL_SECRETS_VERSION := 0.12.1
 
 # Helm Repositories
 METALLB_REPO := https://metallb.github.io/metallb
@@ -53,6 +60,7 @@ KARPENTER_CHART := oci://ghcr.io/sergelogvinov/charts/karpenter-provider-proxmox
 JETSTACK_REPO := https://charts.jetstack.io
 NFS_PROVISIONER_REPO := https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/
 MINIO_REPO := https://charts.min.io/
+EXTERNAL_SECRETS_REPO := https://charts.external-secrets.io
 
 # Colors for output
 COLOR_RESET := \033[0m
@@ -88,6 +96,10 @@ help: ## Show this help message
 	@echo "  make deploy-cert-manager   - Deploy cert-manager + internal CA (Helm)"
 	@echo "  make deploy-storage        - Deploy NFS provisioner (Helm)"
 	@echo "  make deploy-minio          - Deploy MinIO S3 storage (Helm)"
+	@echo ""
+	@echo "$(COLOR_BOLD)Secret Management:$(COLOR_RESET)"
+	@echo "  make deploy-external-secrets - Deploy External Secrets Operator (Helm)"
+	@echo "  make external-secrets-status - Show ESO status"
 	@echo ""
 	@echo "$(COLOR_BOLD)Service Mesh (Linkerd - CLI managed):$(COLOR_RESET)"
 	@echo "  make linkerd-status        - Show Linkerd status"
@@ -159,13 +171,13 @@ deploy-metallb: ## Deploy MetalLB LoadBalancer via Helm
 		--version $(METALLB_VERSION) \
 		-f metallb/helm/metallb-values.yaml \
 		--wait --timeout 5m
-	@echo "$(COLOR_YELLOW)⏳ Applying MetalLB configuration...$(COLOR_RESET)"
-	@$(KUBECTL) apply -f metallb/ipaddresspool.yaml
+	@echo "$(COLOR_YELLOW)⏳ Applying MetalLB configuration (pool: $(METALLB_POOL_START)-$(METALLB_POOL_END))...$(COLOR_RESET)"
+	@cat metallb/ipaddresspool.yaml | $(YQ) '.spec.addresses[0] = "$(METALLB_POOL_START)-$(METALLB_POOL_END)"' | $(KUBECTL) apply -f -
 	@$(KUBECTL) apply -f metallb/l2advertisement.yaml
 	@echo "$(COLOR_GREEN)✅ MetalLB $(METALLB_VERSION) deployed$(COLOR_RESET)"
 
 deploy-nginx-ingress: ## Deploy NGINX Ingress Controller via Helm
-	@echo "$(COLOR_BOLD)📦 Deploying NGINX Ingress $(NGINX_VERSION)...$(COLOR_RESET)"
+	@echo "$(COLOR_BOLD)📦 Deploying NGINX Ingress $(NGINX_VERSION) (hostname: ingress.$(DOMAIN_BASE))...$(COLOR_RESET)"
 	@$(HELM) repo add ingress-nginx $(NGINX_REPO) 2>/dev/null || true
 	@$(HELM) repo update ingress-nginx
 	@$(HELM) upgrade -i ingress-nginx ingress-nginx/ingress-nginx \
@@ -173,12 +185,19 @@ deploy-nginx-ingress: ## Deploy NGINX Ingress Controller via Helm
 		--create-namespace \
 		--version $(NGINX_VERSION) \
 		-f nginx-ingress/helm/nginx-ingress-values.yaml \
+		--set 'controller.service.annotations.external-dns\.alpha\.kubernetes\.io/hostname=ingress.$(DOMAIN_BASE)' \
 		--wait --timeout 5m
 	@echo "$(COLOR_GREEN)✅ NGINX Ingress $(NGINX_VERSION) deployed$(COLOR_RESET)"
 
 deploy-external-dns: ## Deploy external-dns
-	@echo "$(COLOR_BOLD)📦 Deploying external-dns...$(COLOR_RESET)"
-	@$(KUBECTL) apply -k external-dns/
+	@echo "$(COLOR_BOLD)📦 Deploying external-dns (domain: $(DOMAIN_BASE), dns: $(DNS_SERVER))...$(COLOR_RESET)"
+	@$(KUBECTL) apply -f external-dns/namespace.yaml
+	@$(KUBECTL) apply -f external-dns/rbac.yaml 2>/dev/null || true
+	@$(KUBECTL) apply -f external-dns/secret.yaml
+	@cat external-dns/deployment.yaml | \
+		$(YQ) '.spec.template.spec.containers[0].args[2] = "--domain-filter=$(DOMAIN_BASE)"' | \
+		$(YQ) '.spec.template.spec.containers[0].args[4] = "--pihole-server=http://$(DNS_SERVER)"' | \
+		$(KUBECTL) apply -f -
 	@echo "$(COLOR_YELLOW)⏳ Waiting for external-dns to be ready...$(COLOR_RESET)"
 	@$(KUBECTL) wait --for=condition=ready pod -l app.kubernetes.io/name=external-dns -n external-dns --timeout=120s 2>/dev/null || true
 	@echo "$(COLOR_GREEN)✅ external-dns deployed$(COLOR_RESET)"
@@ -408,6 +427,45 @@ minio-status: ## Show MinIO status
 	@echo ""
 	@echo "$(COLOR_BOLD)Ingresses:$(COLOR_RESET)"
 	@$(KUBECTL) get ingress -n minio 2>/dev/null || echo "  None found"
+
+# ============================================================================
+# External Secrets Operator (Vault Integration)
+# ============================================================================
+
+deploy-external-secrets: ## Deploy External Secrets Operator with Vault backend
+	@echo "$(COLOR_BOLD)🔐 Deploying External Secrets Operator $(EXTERNAL_SECRETS_VERSION)...$(COLOR_RESET)"
+	@$(HELM) repo add external-secrets $(EXTERNAL_SECRETS_REPO) 2>/dev/null || true
+	@$(HELM) repo update external-secrets
+	@$(KUBECTL) apply -f external-secrets/namespace.yaml
+	@$(HELM) upgrade -i external-secrets external-secrets/external-secrets \
+		--namespace external-secrets \
+		--version $(EXTERNAL_SECRETS_VERSION) \
+		-f external-secrets/helm/eso-values.yaml \
+		--wait --timeout 5m
+	@echo ""
+	@echo "$(COLOR_YELLOW)⏳ Waiting for ESO CRDs to be ready...$(COLOR_RESET)"
+	@sleep 5
+	@echo ""
+	@echo "$(COLOR_YELLOW)⚠️  Next steps:$(COLOR_RESET)"
+	@echo "  1. Create Vault token: $(COLOR_CYAN)vault token create -policy=kubernetes-secrets$(COLOR_RESET)"
+	@echo "  2. Copy secret template: $(COLOR_CYAN)cp external-secrets/vault-token-secret.yaml.example external-secrets/vault-token-secret.yaml$(COLOR_RESET)"
+	@echo "  3. Edit with your token and apply: $(COLOR_CYAN)kubectl apply -f external-secrets/vault-token-secret.yaml$(COLOR_RESET)"
+	@echo "  4. Apply ClusterSecretStore: $(COLOR_CYAN)kubectl apply -f external-secrets/cluster-secret-store.yaml$(COLOR_RESET)"
+	@echo ""
+	@echo "$(COLOR_GREEN)✅ External Secrets Operator $(EXTERNAL_SECRETS_VERSION) deployed$(COLOR_RESET)"
+
+external-secrets-status: ## Show External Secrets status
+	@echo "$(COLOR_BOLD)📊 External Secrets Status$(COLOR_RESET)"
+	@echo "$(COLOR_CYAN)==========================$(COLOR_RESET)"
+	@echo ""
+	@echo "$(COLOR_BOLD)Pods:$(COLOR_RESET)"
+	@$(KUBECTL) get pods -n external-secrets 2>/dev/null || echo "  Not deployed"
+	@echo ""
+	@echo "$(COLOR_BOLD)ClusterSecretStores:$(COLOR_RESET)"
+	@$(KUBECTL) get clustersecretstores 2>/dev/null || echo "  None found"
+	@echo ""
+	@echo "$(COLOR_BOLD)ExternalSecrets:$(COLOR_RESET)"
+	@$(KUBECTL) get externalsecrets -A 2>/dev/null || echo "  None found"
 
 # ============================================================================
 # Status and Verification

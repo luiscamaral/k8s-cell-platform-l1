@@ -5,10 +5,11 @@ kind: Kustomization
 
 # Resources are applied in order
 resources:
-  # Secrets (applied first)
-  - secret-proxmox-credentials.yaml
+  # ExternalSecrets (pull from Vault via ESO)
+  - externalsecret-proxmox-credentials.yaml
+  - externalsecret-talos-values.yaml
+  # Talos template (Go template, not actual secrets)
   - secret-talos-template.yaml
-  - secret-talos-values.yaml
   # Karpenter CRDs (must exist before controller)
   - proxmox-unmanaged-template.yaml
   - proxmox-nodeclass.yaml
